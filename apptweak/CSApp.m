@@ -178,6 +178,7 @@ static void CSAppInit(void) {
         CSInstallSceneBridge();
         CSInstallTraitOverrides();
         CSInstallKeyboardSupport();
+        CSInstallInputDiagnostics();
         CSTimingLog("app init end bridge-installed bundle=%s", bundleID.UTF8String);
     }
 }
