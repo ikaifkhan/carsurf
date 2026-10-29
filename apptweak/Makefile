@@ -9,6 +9,7 @@ CSApp_FILES += CSMirror.m
 CSApp_FILES += CSKeyboard.m
 CSApp_FILES += CSDisplayLink.m
 CSApp_FILES += CSInput.m
+CSApp_FILES += CSNav.m
 CSApp_FILES += ../shared/CSConfig.m
 CSApp_FILES += ../shared/CSRuntime.m
 CSApp_FILES += ../shared/CSLog.m

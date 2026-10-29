@@ -67,6 +67,10 @@ CGRect CSCarViewportForWindow(UIWindow *window, UIWindowScene *scene,
 /// DIAGNOSTIC: logs which input events reach a bridged app (see CSInput.m).
 void CSInstallInputDiagnostics(void);
 
+/// Joystick/key navigation for non-touch head units (see CSNav.m). Returns YES
+/// if the presses were consumed.
+BOOL CSNavHandlePresses(UIPressesEvent *event, UIWindow *window);
+
 /// Removes safe-area padding UIKit still reports after the window has been moved
 /// inside the safe rectangle, which would otherwise be applied twice.
 void CSNeutralizeResidualSafeArea(UIWindow *window);

@@ -77,6 +77,10 @@ static void cs_sendEvent(UIApplication *self, SEL _cmd, UIEvent *event) {
                   (long)event.type, (long)event.subtype, onCar, detail.UTF8String);
         }
         CSInputDumpState();
+        if (onCar && window && [event isKindOfClass:UIPressesEvent.class] &&
+            CSNavHandlePresses((UIPressesEvent *)event, window)) {
+            return; // joystick press handled by CSNav
+        }
     }
     orig_sendEvent(self, _cmd, event);
 }
