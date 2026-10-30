@@ -42,4 +42,8 @@ void CSInstallCarLaunch(void);
 /// success path. Idempotent.
 void CSInstallCrashDiagnostics(void);
 
+/// DIAGNOSTIC: in the CarPlay host process only, logs the joystick/rotary events
+/// and UIKit focus state seen there (see CSHostInput.m).
+void CSInstallHostInputDiagnostics(void);
+
 NS_ASSUME_NONNULL_END

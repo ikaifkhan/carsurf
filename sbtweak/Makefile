@@ -10,6 +10,7 @@ CSSystem_FILES += CSEntitlementSpoof.m
 CSSystem_FILES += CSAppList.m
 CSSystem_FILES += CSRelay.m
 CSSystem_FILES += CSCarLaunch.m
+CSSystem_FILES += CSHostInput.m
 CSSystem_FILES += ../shared/CSConfig.m
 CSSystem_FILES += ../shared/CSRuntime.m
 CSSystem_FILES += ../shared/CSLog.m

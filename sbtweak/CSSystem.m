@@ -142,6 +142,7 @@ static void CSSystemInit(void) {
             [proc isEqualToString:@"CarPlayApp"] ||
             [proc isEqualToString:@"CarPlayTemplateUIHost"]) {
             CSInstallCrashDiagnostics();
+            CSInstallHostInputDiagnostics();
         }
 
         if (objc_getClass("CRCarPlayAppPolicyEvaluator") || objc_getClass("CARApplication") ||
