@@ -262,8 +262,11 @@ static void CSAutoFocusSoon(UIWindow *w) {
     });
 }
 
-static void CSMove(int dir, UIWindow *w, BOOL allowScroll) {
-    if (CSTopAlert(w)) return;
+/// YES if the press was used (focus set/moved/scrolled); NO if there was
+/// nothing to do, so the caller can let the car handle it (e.g. leave the app
+/// for the CarPlay sidebar).
+static BOOL CSMove(int dir, UIWindow *w, BOOL allowScroll) {
+    if (CSTopAlert(w)) return YES;
     NSMutableArray<UIView *> *cands = [NSMutableArray array];
     CSCollect(w, w, cands, 0);
     CSLog("move dir=%d candidates=%lu", dir, (unsigned long)cands.count);
@@ -272,7 +275,7 @@ static void CSMove(int dir, UIWindow *w, BOOL allowScroll) {
         gCurrent = CSFirstCandidate(cands, w);
         CSLog("initial focus -> %s", gCurrent ? object_getClassName(gCurrent) : "none");
         CSUpdateHighlight();
-        return;
+        return gCurrent != nil;
     }
     UIView *cur = gCurrent;
     UIView *next = CSPick(cands, cur, dir, w);
@@ -282,13 +285,16 @@ static void CSMove(int dir, UIWindow *w, BOOL allowScroll) {
         CSEnsureVisible(next);
         CSUpdateHighlight();
         CSRefreshSoon();
-        return;
+        return YES;
     }
     if (allowScroll && CSScrollToward(cur, dir)) {
         CSLog("nothing in direction %d; scrolled, retrying", dir);
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{ CSMove(dir, w, NO); });
+        return YES;
     }
+    CSLog("nothing in direction %d; passing the press through", dir);
+    return NO;
 }
 
 #pragma mark - Activating
@@ -374,7 +380,7 @@ static BOOL CSIsNavBackButton(UIView *v) {
     return NO;
 }
 
-static void CSBack(UIWindow *w);
+static BOOL CSBack(UIWindow *w);
 
 static void CSSelect(UIWindow *w) {
     UIAlertController *alert = CSTopAlert(w);
@@ -444,7 +450,8 @@ static void CSSelect(UIWindow *w) {
     CSAutoFocusSoon(w);
 }
 
-static void CSBack(UIWindow *w) {
+/// YES if Back did something; NO at the root so the car's own Back/Home applies.
+static BOOL CSBack(UIWindow *w) {
     UIViewController *top = CSTopVC(w);
     CSLog("back; top=%s", top ? object_getClassName(top) : "nil");
     if ([top isKindOfClass:UIAlertController.class]) {
@@ -460,16 +467,22 @@ static void CSBack(UIWindow *w) {
     } else if (top.presentingViewController) {
         [top dismissViewControllerAnimated:YES completion:nil];
     } else {
-        return;
+        CSLog("back at root; passing the press through");
+        return NO;
     }
     gCurrent = nil;
     CSUpdateHighlight();
     CSAutoFocusSoon(w);
+    return YES;
 }
 
 #pragma mark - Entry point
 
-/// Returns YES if every press in the event was one this navigator consumed.
+static BOOL gSwallow[16];
+
+/// Returns YES if every press in the event was consumed here. Presses that had
+/// nothing to do (edge of the screen, Back at the root) are passed through so the
+/// car/CarPlay can use them, e.g. to move into the CarPlay sidebar.
 BOOL CSNavHandlePresses(UIPressesEvent *event, UIWindow *w) {
     BOOL any = NO, all = YES;
     for (UIPress *p in event.allPresses) {
@@ -477,20 +490,25 @@ BOOL CSNavHandlePresses(UIPressesEvent *event, UIWindow *w) {
         BOOL mine = (t >= 0 && t <= 5) || t == 7;
         if (!mine) { all = NO; continue; }
         any = YES;
-        if (p.phase != UIPressPhaseBegan) continue;
 
-        gWindow = w;
-        CSEnsureTimer();
-        switch (t) {
-            case 0: CSMove(CSDirUp, w, YES); break;
-            case 1: CSMove(CSDirDown, w, YES); break;
-            case 2: CSMove(CSDirLeft, w, YES); break;
-            case 3: CSMove(CSDirRight, w, YES); break;
-            case 4: CSSelect(w); break;
-            case 5:
-            case 7: CSBack(w); break;
-            default: break;
+        if (p.phase == UIPressPhaseBegan) {
+            gWindow = w;
+            CSEnsureTimer();
+            BOOL handled = YES;
+            switch (t) {
+                case 0: handled = CSMove(CSDirUp, w, YES); break;
+                case 1: handled = CSMove(CSDirDown, w, YES); break;
+                case 2: handled = CSMove(CSDirLeft, w, YES); break;
+                case 3: handled = CSMove(CSDirRight, w, YES); break;
+                case 4: CSSelect(w); break;
+                case 5:
+                case 7: handled = CSBack(w); break;
+                default: break;
+            }
+            gSwallow[t] = handled;
         }
+        if (!gSwallow[t]) all = NO;
+        if (p.phase == UIPressPhaseEnded || p.phase == UIPressPhaseCancelled) gSwallow[t] = NO;
     }
     return any && all;
 }
