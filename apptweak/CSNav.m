@@ -431,8 +431,11 @@ static void CSSelect(UIWindow *w) {
         return;
     } else if ([v isKindOfClass:UIControl.class]) {
         UIControl *c = (UIControl *)v;
+        // Fire what a real tap would: TouchUpInside, plus the primary action if
+        // the control registered one (UIAction-based buttons).
+        UIControlEvents registered = c.allControlEvents;
         [c sendActionsForControlEvents:UIControlEventTouchUpInside];
-        if ([c isKindOfClass:UIButton.class] && ((UIButton *)c).primaryAction) {
+        if (registered & UIControlEventPrimaryActionTriggered) {
             [c sendActionsForControlEvents:UIControlEventPrimaryActionTriggered];
         }
     } else if (!CSActivateTap(v)) {
