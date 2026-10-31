@@ -141,6 +141,16 @@ static void CSRequestDockFocus(void) {
     CSLog("requested CarPlay sidebar focus");
 }
 
+/// The CarPlay dock begins just outside the bridged scene's right side. Do
+/// not keep chasing an app's off-screen controls after the highlight reaches
+/// that visible boundary.
+static BOOL CSAtVisibleRightEdge(UIView *v, UIWindow *w) {
+    if (!v || !w) return NO;
+    CGRect r = CSVisibleRect(v, w);
+    CGFloat edge = CGRectGetMaxX(w.bounds);
+    return CGRectGetMaxX(r) >= edge - 56.0;
+}
+
 static UIView *CSPick(NSArray<UIView *> *cands, UIView *cur, int dir, UIWindow *w) {
     CGRect rc = CSVisibleRect(cur, w);
     if (CGRectIsNull(rc)) return nil;
@@ -289,6 +299,12 @@ static BOOL CSMove(int dir, UIWindow *w, BOOL allowScroll) {
         return gCurrent != nil;
     }
     UIView *cur = gCurrent;
+    if (dir == CSDirRight && CSAtVisibleRightEdge(cur, w)) {
+        CSLog("visible right edge; requesting CarPlay sidebar focus");
+        CSRequestDockFocus();
+        return NO;
+    }
+
     UIView *next = CSPick(cands, cur, dir, w);
     if (next) {
         gCurrent = next;
