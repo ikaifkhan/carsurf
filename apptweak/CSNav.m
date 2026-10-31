@@ -119,15 +119,26 @@ static void CSCollect(UIView *v, UIWindow *w, NSMutableArray<UIView *> *out, int
     for (UIView *s in v.subviews) CSCollect(s, w, out, depth + 1);
 }
 
-static UIView *CSFirstCandidate(NSArray<UIView *> *cands, UIWindow *w) {
-    NSArray *sorted = [cands sortedArrayUsingComparator:^NSComparisonResult(UIView *a, UIView *b) {
+static NSArray<UIView *> *CSReadingOrder(NSArray<UIView *> *cands, UIWindow *w) {
+    return [cands sortedArrayUsingComparator:^NSComparisonResult(UIView *a, UIView *b) {
         CGRect ra = CSVisibleRect(a, w), rb = CSVisibleRect(b, w);
         if (fabs(ra.origin.y - rb.origin.y) > 12) {
             return ra.origin.y < rb.origin.y ? NSOrderedAscending : NSOrderedDescending;
         }
         return ra.origin.x < rb.origin.x ? NSOrderedAscending : NSOrderedDescending;
     }];
-    return sorted.firstObject;
+}
+
+static UIView *CSFirstCandidate(NSArray<UIView *> *cands, UIWindow *w) {
+    return CSReadingOrder(cands, w).firstObject;
+}
+
+/// Asks the CarPlay host process (which owns the car's sidebar) to take focus,
+/// like a stock app does when you leave it. Handled in CSHostInput.m.
+static void CSRequestDockFocus(void) {
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                         CFSTR("com.carsurf.focusdock"), NULL, NULL, YES);
+    CSLog("requested CarPlay sidebar focus");
 }
 
 static UIView *CSPick(NSArray<UIView *> *cands, UIView *cur, int dir, UIWindow *w) {
@@ -294,6 +305,7 @@ static BOOL CSMove(int dir, UIWindow *w, BOOL allowScroll) {
         return YES;
     }
     CSLog("nothing in direction %d; passing the press through", dir);
+    if (dir == CSDirRight) CSRequestDockFocus();
     return NO;
 }
 
@@ -468,6 +480,7 @@ static BOOL CSBack(UIWindow *w) {
         [top dismissViewControllerAnimated:YES completion:nil];
     } else {
         CSLog("back at root; passing the press through");
+        CSRequestDockFocus();
         return NO;
     }
     gCurrent = nil;
@@ -511,4 +524,47 @@ BOOL CSNavHandlePresses(UIPressesEvent *event, UIWindow *w) {
         if (p.phase == UIPressPhaseEnded || p.phase == UIPressPhaseCancelled) gSwallow[t] = NO;
     }
     return any && all;
+}
+
+#pragma mark - Rotary dial
+
+static UIWindow *CSCarWindow(void) {
+    UIWindow *w = gWindow;
+    if (w && w.windowScene && CSIsBridgedCarScene(w.windowScene)) return w;
+    for (UIScene *sc in UIApplication.sharedApplication.connectedScenes) {
+        if (![sc isKindOfClass:UIWindowScene.class] || !CSIsBridgedCarScene(sc)) continue;
+        for (UIWindow *x in ((UIWindowScene *)sc).windows) { if (x.isKeyWindow) return x; }
+        return ((UIWindowScene *)sc).windows.firstObject;
+    }
+    return nil;
+}
+
+/// The dial reaches the app as a private UIEvent: type 7, subtype 200 (clockwise,
+/// next) or 201 (counter-clockwise, previous), as seen on the stock CarPlay host.
+/// Returns YES if the event was consumed.
+BOOL CSNavHandleRotary(UIEvent *event) {
+    if ((NSInteger)event.type != 7) return NO;
+    NSInteger sub = (NSInteger)event.subtype;
+    if (sub != 200 && sub != 201) return NO;
+    UIWindow *w = CSCarWindow();
+    if (!w) return NO;
+    gWindow = w;
+    CSEnsureTimer();
+    if (CSTopAlert(w)) return YES;
+
+    NSMutableArray<UIView *> *cands = [NSMutableArray array];
+    CSCollect(w, w, cands, 0);
+    NSArray<UIView *> *sorted = CSReadingOrder(cands, w);
+    if (!sorted.count) return YES;
+    NSUInteger idx = CSFocusIsValid(w) ? [sorted indexOfObject:gCurrent] : NSNotFound;
+    NSInteger next;
+    if (idx == NSNotFound) next = (sub == 200) ? 0 : (NSInteger)sorted.count - 1;
+    else next = (NSInteger)idx + (sub == 200 ? 1 : -1);
+    if (next < 0 || next >= (NSInteger)sorted.count) return YES; // end of list
+    gCurrent = sorted[(NSUInteger)next];
+    CSLog("rotary %s -> %s", sub == 200 ? "next" : "previous", object_getClassName(gCurrent));
+    CSEnsureVisible(gCurrent);
+    CSUpdateHighlight();
+    CSRefreshSoon();
+    return YES;
 }

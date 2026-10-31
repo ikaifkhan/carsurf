@@ -71,6 +71,9 @@ void CSInstallInputDiagnostics(void);
 /// if the presses were consumed.
 BOOL CSNavHandlePresses(UIPressesEvent *event, UIWindow *window);
 
+/// Rotary dial (private UIEvent type 7, subtype 200/201): next/previous item.
+BOOL CSNavHandleRotary(UIEvent *event);
+
 /// Removes safe-area padding UIKit still reports after the window has been moved
 /// inside the safe rectangle, which would otherwise be applied twice.
 void CSNeutralizeResidualSafeArea(UIWindow *window);

@@ -106,6 +106,52 @@ static void cs_host_handleHID(UIApplication *self, SEL _cmd, void *hid) {
     orig_handleHID(self, _cmd, hid);
 }
 
+static UIView *CSFindViewNamed(UIView *v, const char *cls, int depth) {
+    if (depth > 40) return nil;
+    if (!v.hidden && strstr(object_getClassName(v), cls)) return v;
+    for (UIView *s in v.subviews) {
+        UIView *r = CSFindViewNamed(s, cls, depth + 1);
+        if (r) return r;
+    }
+    return nil;
+}
+
+/// Gives UIKit focus to the car's sidebar (dock), as happens when you leave a stock
+/// app. Triggered by a Darwin notification posted from a bridged app (CSNav.m).
+static void CSHostFocusDock(void) {
+    UIApplication *app = UIApplication.sharedApplication;
+    UIView *icon = nil;
+    UIWindow *win = nil;
+    for (int pass = 0; pass < 2 && !icon; pass++) {
+        for (UIScene *sc in app.connectedScenes) {
+            if (![sc isKindOfClass:UIWindowScene.class]) continue;
+            for (UIWindow *w in ((UIWindowScene *)sc).windows) {
+                if (pass == 0 && !strstr(object_getClassName(w), "Dock")) continue;
+                UIView *f = CSFindViewNamed(w, "DBIconView", 0);
+                if (f) { icon = f; win = w; break; }
+            }
+            if (icon) break;
+        }
+    }
+    Class fsClass = NSClassFromString(@"UIFocusSystem");
+    id sys = (icon && fsClass) ? ((id (*)(id, SEL, id))objc_msgSend)(
+                 fsClass, @selector(focusSystemForEnvironment:), win) : nil;
+    if (!sys) { CSLog("dock focus: no icon/focus system (icon=%d)", icon != nil); return; }
+    CSLog("dock focus: requesting focus on %s in %s", object_getClassName(icon), object_getClassName(win));
+    ((void (*)(id, SEL, id))objc_msgSend)(sys, @selector(requestFocusUpdateToEnvironment:), icon);
+    if ([sys respondsToSelector:@selector(updateFocusIfNeeded)]) {
+        ((void (*)(id, SEL))objc_msgSend)(sys, @selector(updateFocusIfNeeded));
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CSLog("dock focus: now %s", CSHostFocusDescription(win).UTF8String);
+    });
+}
+
+static void CSHostDockNotification(CFNotificationCenterRef c, void *o, CFNotificationName n,
+                                   const void *obj, CFDictionaryRef info) {
+    dispatch_async(dispatch_get_main_queue(), ^{ CSHostFocusDock(); });
+}
+
 static NSMapTable<UIWindow *, NSString *> *gLastFocus;
 
 /// Logs whenever the focused item of any window changes. This is how a dial turn
@@ -140,6 +186,11 @@ void CSInstallHostInputDiagnostics(void) {
     BOOL hid = CSSwizzleInstanceMethod(UIApplication.class, sel_getUid("_handleHIDEvent:"),
                                        (IMP)cs_host_handleHID, (IMP *)&orig_handleHID);
     gLastFocus = [NSMapTable weakToStrongObjectsMapTable];
+    if ([proc isEqualToString:@"CarPlay"]) {
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL,
+                                        CSHostDockNotification, CFSTR("com.carsurf.focusdock"),
+                                        NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+    }
     [NSTimer scheduledTimerWithTimeInterval:0.3 repeats:YES block:^(NSTimer *t) { CSHostPollFocus(); }];
     CSLog("host input diagnostics installed (sendEvent=%d hid=%d getType=%d getInt=%d)",
           se, hid, gGetType != NULL, gGetInt != NULL);

@@ -59,6 +59,7 @@ static void CSInputDumpState(void) {
 
 static void cs_sendEvent(UIApplication *self, SEL _cmd, UIEvent *event) {
     if (CSHasActiveCarScene()) {
+        if (CSNavHandleRotary(event)) return; // dial turn handled by CSNav
         UIWindow *window = nil;
         NSString *detail = @"";
         if ([event isKindOfClass:UIPressesEvent.class]) {
