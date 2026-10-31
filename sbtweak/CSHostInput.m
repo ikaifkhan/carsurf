@@ -149,6 +149,29 @@ static void CSHostFocusDock(void) {
 
 static void CSHostDockNotification(CFNotificationCenterRef c, void *o, CFNotificationName n,
                                    const void *obj, CFDictionaryRef info) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSArray<NSString *> *classes = @[
+            @"DashBoard.DBDockController", @"DBFocusController",
+            @"DBFocusMovementManager", @"DBAppDockViewController",
+            @"_UIEventDeferringManager"
+        ];
+        for (NSString *className in classes) {
+            Class cls = NSClassFromString(className);
+            if (!cls) { CSLog("dock API missing class %s", className.UTF8String); continue; }
+            unsigned int count = 0;
+            Method *methods = class_copyMethodList(cls, &count);
+            for (unsigned int i = 0; i < count; i++) {
+                const char *selName = sel_getName(method_getName(methods[i]));
+                NSString *name = [[NSString stringWithUTF8String:selName] lowercaseString];
+                if (![name containsString:@"focus"] && ![name containsString:@"dock"] &&
+                    ![name containsString:@"event"] && ![name containsString:@"defer"] &&
+                    ![name containsString:@"activat"] && ![name containsString:@"select"]) continue;
+                CSLog("dock API %s %s", className.UTF8String, selName);
+            }
+        }
+    });
+
     dispatch_async(dispatch_get_main_queue(), ^{ CSHostFocusDock(); });
 }
 
